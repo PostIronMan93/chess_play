@@ -1,254 +1,238 @@
-# chess/chess_logic.py
-class ChessPiece:
-    def __init__(self, color):
-        self.color = color
-
-    def valid_moves(self, start_position, board):
-        raise NotImplementedError
-
-
-class Pawn(ChessPiece):
-    def valid_moves(self, start_position, board):
-        moves = []
-        direction = 1 if self.color == 'white' else -1
-        print(f"Validating moves for pawn at {start_position}")
-
-        # Стандартный ход на одну клетку вперед
-        forward_move = (start_position[0], start_position[1] + direction)
-        if board.is_empty(forward_move):
-            moves.append(forward_move)
-
-        # Возможный ход на две клетки вперед
-        if (self.color == 'white' and start_position[1] == 1) or (self.color == 'black' and start_position[1] == 6):
-            double_move = (start_position[0], start_position[1] + 2 * direction)
-            if board.is_empty(double_move):
-                moves.append(double_move)
-
-        # Ход с захватом
-        capture_moves = [
-            (start_position[0] - 1, start_position[1] + direction),  # Влево на одну клетку
-            (start_position[0] + 1, start_position[1] + direction)  # Вправо на одну клетку
-        ]
-        for capture in capture_moves:
-            if board.is_occupied_by_enemy(capture, self.color):
-                moves.append(capture)
-
-        print(f"Valid moves for pawn: {moves}")
-        return moves
-
-    def promote(self):
-        # Превращение пешки в ферзя, слона, коня или ладью
-        return Queen(self.color)  # По умолчанию превращаем в ферзя
-
-class Rook(ChessPiece):
-    def valid_moves(self, start_position, board):
-        moves = []
-        directions = [(0, 1), (1, 0), (0, -1), (-1, 0)]  # Вверх, вправо, вниз, влево
-
-        for direction in directions:
-            for step in range(1, 8):
-                new_position = (start_position[0] + direction[0] * step, start_position[1] + direction[1] * step)
-                if board.is_within_bounds(new_position):
-                    if board.is_empty(new_position):
-                        moves.append(new_position)
-                    elif board.is_occupied_by_enemy(new_position, self.color):
-                        moves.append(new_position)
-                        break  # Убили, не можем продолжать
-                    else:
-                        break  # Своя фигура, останавливаемся
-                else:
-                    break  # Выходим за пределы доски
-
-        return moves
-
-
-class Knight(ChessPiece):
-    def valid_moves(self, start_position, board):
-        moves = []
-        x, y = start_position
-        # Все возможные ходы коня
-        potential_moves = [
-            (x + 2, y + 1), (x + 2, y - 1),
-            (x - 2, y + 1), (x - 2, y - 1),
-            (x + 1, y + 2), (x + 1, y - 2),
-            (x - 1, y + 2), (x - 1, y - 2)
-        ]
-
-        for move in potential_moves:
-            if board.is_within_bounds(move) and (board.is_empty(move) or board.is_occupied_by_enemy(move, self.color)):
-                moves.append(move)
-
-        return moves
-
-class Bishop(ChessPiece):
-    def valid_moves(self, start_position, board):
-        moves = []
-        directions = [(1, 1), (1, -1), (-1, 1), (-1, -1)]  # По диагоналям
-
-        for direction in directions:
-            for step in range(1, 8):
-                new_position = (start_position[0] + direction[0] * step, start_position[1] + direction[1] * step)
-                if board.is_within_bounds(new_position):
-                    if board.is_empty(new_position):
-                        moves.append(new_position)
-                    elif board.is_occupied_by_enemy(new_position, self.color):
-                        moves.append(new_position)
-                        break  # Убили, не можем продолжать
-                    else:
-                        break  # Своя фигура, останавливаемся
-                else:
-                    break  # Выходим за пределы доски
-
-        return moves
-
-class Queen(ChessPiece):
-    def valid_moves(self, start_position, board):
-        moves = []
-        directions = [
-            (0, 1), (1, 0), (0, -1), (-1, 0),  # Вверх, вправо, вниз, влево
-            (1, 1), (1, -1), (-1, 1), (-1, -1)  # По диагоналям
-        ]
-
-        for direction in directions:
-            for step in range(1, 8):
-                new_position = (start_position[0] + direction[0] * step, start_position[1] + direction[1] * step)
-                if board.is_within_bounds(new_position):
-                    if board.is_empty(new_position):
-                        moves.append(new_position)
-                    elif board.is_occupied_by_enemy(new_position, self.color):
-                        moves.append(new_position)
-                        break  # Убили, не можем продолжать
-                    else:
-                        break  # Своя фигура, останавливаемся
-                else:
-                    break  # Выходим за пределы доски
-
-        return moves
-
-
-class King(ChessPiece):
-    def valid_moves(self, start_position, board):
-        moves = []
-        directions = [
-            (0, 1), (1, 0), (0, -1), (-1, 0),  # Вверх, вправо, вниз, влево
-            (1, 1), (1, -1), (-1, 1), (-1, -1)  # По диагоналям
-        ]
-
-        for direction in directions:
-            new_position = (start_position[0] + direction[0], start_position[1] + direction[1])
-            if board.is_within_bounds(new_position):
-                if board.is_empty(new_position) or board.is_occupied_by_enemy(new_position, self.color):
-                    moves.append(new_position)  # Легальный ход, даже если захват
-
-        return moves
-
-
-class ChessBoard:
-    def __init__(self):
-        self.board = self.create_board()
-        self.white_king_moved = False
-        self.black_king_moved = False
-        self.white_rook_a_moved = False
-        self.white_rook_h_moved = False
-        self.black_rook_a_moved = False
-        self.black_rook_h_moved = False
-
-    def create_board(self):
-        # Создание и инициализация доски с фигурами
-        board = [[None for _ in range(8)] for _ in range(8)]
-        # Пример: инициализация фигур
-        for x in range(8):
-            board[x][1] = Pawn('black')
-            board[x][6] = Pawn('white')
-        board[0][0] = Rook('black')
-        board[0][7] = Rook('white')
-        board[1][0] = Knight('black')
-        board[1][7] = Knight('white')
-        board[2][0] = Bishop('black')
-        board[2][7] = Bishop('white')
-        board[3][0] = Queen('black')
-        board[3][7] = Queen('white')
-        board[4][0] = King('black')
-        board[4][7] = King('white')
-        board[5][0] = Bishop('black')
-        board[5][7] = Bishop('white')
-        board[6][0] = Knight('black')
-        board[6][7] = Knight('white')
-        board[7][0] = Rook('black')
-        board[7][7] = Rook('white')
-        return board
-
-    def is_empty(self, position):
-        x, y = position
-        return self.board[x][y] is None
-
-    def is_occupied_by_enemy(self, position, color):
-        x, y = position
-        piece = self.board[x][y]
-        return piece is not None and piece.color != color
-
-    def is_within_bounds(self, position):
-        x, y = position
-        return 0 <= x < 8 and 0 <= y < 8
-
-    def perform_castle(self, king_pos, rook_pos):
-        king = self.board[king_pos[0]][king_pos[1]]
-        rook = self.board[rook_pos[0]][rook_pos[1]]
-
-        # Выполнение рокировки
-        if king and isinstance(king, King) and rook and isinstance(rook, Rook):
-            if self.white_king_moved or self.white_rook_h_moved:
-                return False  # Для белых короля и ладьи
-            if self.is_empty((king_pos[0], king_pos[1] - 1)) and self.is_empty((king_pos[0], king_pos[1] - 2)):
-                self.board[king_pos[0]][king_pos[1] - 1] = rook
-                self.board[rook_pos[0]][rook_pos[1]] = None
-                self.board[king_pos[0]][king_pos[1]] = None
-                self.board[king_pos[0]][king_pos[1] - 1] = king
-                return True
-            return False
-
-    def is_in_check(self, color):
-        king_position = self.find_king(color)
-
-        if not king_position:
-            return False  # Король не найден
-
-        # Проверяем все атакующие фигуры
-        for x in range(8):
-            for y in range(8):
-                piece = self.board[x][y]
-                if piece and piece.color != color:
-                    if king_position in piece.valid_moves((x, y), self):
-                        return True  # Король под угрозой
+def is_valid_move(figure, old_coords, new_coords, board):
+    print(f"Checking move for {figure} from {old_coords} to {new_coords}")
+    # Проверяем, что новые координаты находятся в пределах доски
+    if not (0 <= new_coords[0] < 8 and 0 <= new_coords[1] < 8):
+        print("Move out of bounds")
         return False
+    if old_coords == new_coords:
+        print("Move to the same position")
+        return False
+    # Проверяем, что фигура не движется на свою позицию
+    target = board[new_coords[0]][new_coords[1]]
+    if target is not None and target.islower() == figure.islower():  # проверяем цвет
+        print("Cannot move to a square occupied by own piece")
+        return False
+    return True
+def move_pawn(old_coords, new_coords, board):
+    # Логика движения для пешки
+    old_x, old_y = old_coords
+    new_x, new_y = new_coords
+    figure = board[old_x][old_y]
 
-    def find_king(self, color):
-        for x in range(8):
-            for y in range(8):
-                piece = self.board[x][y]
-                if isinstance(piece, King) and piece.color == color:
-                    return (x, y)
-        return None
+    if figure is None:
+        return (False, board)
+    # Определяем направление движения
+    direction = 1 if figure.islower() else -1
 
-    def is_checkmate(self, color):
-        if not self.is_in_check(color):
-            return False  # Если не в шаху, не может быть мата
+    # Простое движение вперед
+    if new_x == old_x + direction and new_y == old_y and board[new_x][new_y] is None:
+        board[new_x][new_y] = figure
+        board[old_x][old_y] = None
+        return (True, board)
 
-        # Проверяем все легальные ходы для всех фигур
-        for x in range(8):
-            for y in range(8):
-                piece = self.board[x][y]
-                if piece and piece.color == color:
-                    valid_moves = piece.valid_moves((x, y), self)
-                    for move in valid_moves:
-                        original_position = (x, y)
-                        target_piece = self.board[move[0]][move[1]]
-                        # Пробуем сделать ход
-                        self.board[move[0]][move[1]] = piece
-                        self.board[x][y] = None
-                        if not self.is_in_check(color):
-                            # Вернуть обратно
-                            self.board[x][y] = piece
-                            self.board[move[0]][move[1]] = target_piece
-                            return False  # Легальный ход найден
-        return True  # Нет легальных ходов, это мат
+    # Возможность двойного хода с начальной позиции
+    if (old_x == 6 and figure.isupper() and new_x == 4 and new_y == old_y and board[5][old_y] is None and board[4][old_y] is None) or \
+       (old_x == 1 and figure.islower() and new_x == 3 and new_y == old_y and board[2][old_y] is None and board[3][old_y] is None):
+        board[new_x][new_y] = figure
+        board[old_x][old_y] = None
+        return (True, board)
+
+    # Удар по диагонали
+    if new_x == old_x + direction and abs(new_y - old_y) == 1 and board[new_x][new_y] is not None:
+        board[new_x][new_y] = figure
+        board[old_x][old_y] = None
+        return (True, board)
+
+    return (False, board)
+def move_rook(old_coords, new_coords, board):
+    old_x, old_y = old_coords
+    new_x, new_y = new_coords
+    figure = board[old_x][old_y]
+
+    if figure is None:
+        return (False, board)
+
+    # Проверка перемещения по вертикали или горизонтали
+    if old_x != new_x and old_y != new_y:
+        return (False, board)
+
+    # Проверка на наличие других фигур на пути
+    step_x = (new_x - old_x) // max(1, abs(new_x - old_x)) if old_x != new_x else 0
+    step_y = (new_y - old_y) // max(1, abs(new_y - old_y)) if old_y != new_y else 0
+
+    # Перемещение по пути
+    x, y = old_x + step_x, old_y + step_y
+    while (x, y) != (new_x, new_y):
+        if board[x][y] is not None:
+            return (False, board)
+        x += step_x
+        y += step_y
+
+    # Перемещение
+    board[new_x][new_y] = figure
+    board[old_x][old_y] = None
+    return (True, board)
+
+
+def move_knight(old_coords, new_coords, board):
+    old_x, old_y = old_coords
+    new_x, new_y = new_coords
+    figure = board[old_x][old_y]
+
+    if figure is None:
+        return (False, board)
+
+    # Определяем допустимое движение конем
+    if (abs(new_x - old_x), abs(new_y - old_y)) in [(2, 1), (1, 2)]:
+        board[new_x][new_y] = figure
+        board[old_x][old_y] = None
+        return (True, board)
+    return (False, board)
+def move_bishop(old_coords, new_coords, board):
+    old_x, old_y = old_coords
+    new_x, new_y = new_coords
+    figure = board[old_x][old_y]
+
+    if figure is None:
+        return (False, board)
+
+    # Проверяем, что перемещение по диагонали
+    if abs(new_x - old_x) != abs(new_y - old_y):
+        return (False, board)
+
+    step_x = 1 if new_x > old_x else -1
+    step_y = 1 if new_y > old_y else -1
+
+    # Проверка наличия фигур на пути
+    for step in range(1, abs(new_x - old_x)):
+        if board[old_x + step * step_x][old_y + step * step_y] is not None:
+            return (False, board)
+
+    # Перемещение
+    board[new_x][new_y] = figure
+    board[old_x][old_y] = None
+    return (True, board)
+
+
+def move_queen(old_coords, new_coords, board):
+    old_x, old_y = old_coords
+    new_x, new_y = new_coords
+    figure = board[old_x][old_y]
+
+    if figure is None:
+        return (False, board)
+    # Логика движения ферзя - сочетание движений ладьи и слона
+    if old_coords[0] == new_coords[0] or old_coords[1] == new_coords[1] and(abs(new_coords[0] - old_coords[0]) == abs(new_coords[1] - old_coords[1])):  # Движение как слон
+        board[new_x][new_y] = figure
+        board[old_x][old_y] = None
+        return (True, board)
+    return (False, board)
+
+def move_king(old_coords, new_coords, board):
+    old_x, old_y = old_coords
+    new_x, new_y = new_coords
+    figure = board[old_x][old_y]
+
+    if figure is None:
+        return (False, board)
+
+        # Логика движения короля - на одну клетку в любом направлении
+    if abs(new_x - old_x) <= 1 and abs(new_y - old_y) <= 1:
+        if is_valid_move(figure, old_coords, new_coords, board):  # Проверка на валидность движения
+            board[new_x][new_y] = figure
+            board[old_x][old_y] = None
+            return (True, board)
+
+    return (False, board)
+
+
+def process_move(old_coords, new_coords, board):
+    figure = board[old_coords[0]][old_coords[1]]
+    if figure is None:
+        return (False, board)  # Никакой фигуры на старых координатах
+
+    # Определяем цвет фигуры
+    color = 'white' if figure.isupper() else 'black'
+
+    # Проверяем, является ли движение допустимым
+    if not is_valid_move(figure, old_coords, new_coords, board):
+        return (False, board)  # Ход недопустим
+
+    # Вызов функции перемещения в зависимости от типа фигуры
+    move_functions = {
+        'p': move_pawn,
+        'r': move_rook,
+        'n': move_knight,
+        'b': move_bishop,
+        'q': move_queen,
+        'k': move_king,
+    }
+
+    # Получаем функцию перемещения для текущей фигуры
+    move_func = move_functions.get(figure.lower())
+    if move_func:
+        return move_func(old_coords, new_coords, board)  # Выполняем движение
+
+    return (False, board)  # Ход не выполнен, если функция перемещения не найдена
+
+    # Пример шахматной доски
+def create_initial_board():
+    board = [[None for _ in range(8)] for _ in range(8)]
+
+        # Расстановка фигур: символы представляют фигуры
+        # Цвет: 'b' - черный, 'w' - белый
+    # Формат: 'тип_цвет', где тип: 'p' - пешка, 'r' - ладья, 'n' - конь, 'b' - слон, 'q' - ферзь, 'k' - король
+    board[0][0] = 'r'  # Черная ладья
+    board[0][1] = 'n'  # Черный конь
+    board[0][2] = 'b'  # Черный слон
+    board[0][3] = 'q'  # Черный ферзь
+    board[0][4] = 'k'  # Черный король
+    board[0][5] = 'b'  # Черный слон
+    board[0][6] = 'n'  # Черный конь
+    board[0][7] = 'r'  # Черная ладья
+
+    # Черные пешки
+    for i in range(8):
+        board[1][i] = 'p'
+
+        # Белые пешки
+    for i in range(8):
+        board[6][i] = 'P'
+
+    board[7][0] = 'R'  # Белая ладья
+    board[7][1] = 'N'  # Белый конь
+    board[7][2] = 'B'  # Белый слон
+    board[7][3] = 'Q'  # Белый ферзь
+    board[7][4] = 'K'  # Белый король
+    board[7][5] = 'B'  # Белый слон
+    board[7][6] = 'N'  # Белый конь
+    board[7][7] = 'R'  # Белая ладья
+
+    return board
+
+    # Инициализация доски
+board = create_initial_board()
+
+    # Пример движения белой пешки
+# result = move_piece((1, 0), (3, 0), board)  # Пешка с позиции (6, 1) на (5, 1)
+# print(result)  # Ожидается (True, board)
+#
+# result = move_piece((7, 0), (6, 0), board)  # Пешка с позиции (6, 1) на (5, 1)
+# print(result)  # Ожидается (True, board)
+#
+# result = move_piece((0, 0), (2, 0), board)  # Пешка с позиции (6, 1) на (5, 1)
+# print(result)  # Ожидается (True, board)
+
+# result = move_piece((7, 3), (6, 3), board)  # Пешка с позиции (6, 1) на (5, 1)
+# print(result)  # Ожидается (True, board)
+#
+# result = move_piece((1, 3), (2, 2), board)  # Пешка с позиции (6, 1) на (5, 1)
+# print(result)  # Ожидается (True, board)
+#
+# result = move_piece((0, 4), (1, 3), board)  # Пешка с позиции (6, 1) на (5, 1)
+# print(result)  # Ожидается (True, board)
+
+    # Печать доски
+def print_board(board):
+    for row in board:
+        print(" ".join(cell if cell is not None else "-" for cell in row))

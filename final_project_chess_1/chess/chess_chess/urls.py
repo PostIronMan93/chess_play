@@ -1,8 +1,9 @@
 from django.urls import path
-from .views import index, move_piece
+from . import views
 
 urlpatterns = [
-    path('', index, name='index'),
-    path('move_piece/', move_piece, name='move_piece'),
+    path('', views.index, name='index'),
+    path('move_piece/', views.move_piece, name='move_piece'),
+    path('new_game/', views.new_game, name='new_game'),
 ]
 
