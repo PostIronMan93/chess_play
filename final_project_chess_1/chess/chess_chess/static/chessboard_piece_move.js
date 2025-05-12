@@ -28,8 +28,8 @@ const pieceSymbols = {
     black_pawn: '♟',
 };
 
-// Для рокировки и других ходов отслеживаем, двигалась ли фигура
-// Инициализация фигур с флагом hasMoved
+
+// Инициализация фигур
 function initPieces() {
     const initial = [
         ['black_rook','black_knight','black_bishop','black_queen','black_king','black_bishop','black_knight','black_rook'],
@@ -50,6 +50,7 @@ function initPieces() {
     }
 }
 
+//отрисовка доски
 function drawBoard() {
     for(let y=0; y<8; y++){
         for(let x=0; x<8; x++) {
@@ -59,6 +60,7 @@ function drawBoard() {
     }
 }
 
+//отрисовка фигур
 function drawPieces(){
     ctx.font = `${cellSize - 10}px Arial`;
     ctx.textAlign = 'center';
@@ -68,7 +70,7 @@ function drawPieces(){
         if(dragging && piece === selectedPiece) continue; // рисуем перетаскиваемую фигуру отдельно
         const px = piece.x * cellSize + cellSize/2;
         const py = piece.y * cellSize + cellSize/2;
-        ctx.fillStyle = piece.type.startsWith('white') ? '#fff' : '#000'; // Фигуры белых черные, фигур черных — белые (контраст)
+        ctx.fillStyle = piece.type.startsWith('white') ? '#fff' : '#000';
         ctx.fillText(pieceSymbols[piece.type], px, py);
     }
     // Рисуем перетаскиваемую фигуру под мышкой
@@ -82,7 +84,7 @@ function getPieceAt(x, y) {
     return pieces.find(p => p.x === x && p.y === y);
 }
 
-// Проверка пути на препятствия (для ладьи, слона, ферзя)
+// Проверка пути на препятствия, свободен ли путь
 function isPathClear(start, end) {
     const dx = Math.sign(end.x - start.x);
     const dy = Math.sign(end.y - start.y);
@@ -114,7 +116,7 @@ function canMove(piece, from, to, skipCheck=false) {
             let dir = -1;
             // движение вперёд 1
             if(dx === 0 && dy === dir && !target) return true;
-            // движение вперёд 2 из начальной позиции
+            // движение вперёд на 2 клетки вперёд из начальной позиции
             if(dx === 0 && dy === 2*dir && from.y === 6 && !target && !getPieceAt(from.x, from.y + dir)) return true;
             // взятие по диагонали
             if(Math.abs(dx) === 1 && dy === dir && target && target.type.startsWith('black')) return true;
@@ -177,11 +179,11 @@ function isKingInCheck(playerColor) {
     return false;
 }
 
-// Сделать ход и проверить шах
+// Сделать ход и проверить , был ли шах до этого хода
 function tryMove(piece, from, to) {
     const target = getPieceAt(to.x, to.y);
 
-    // Сохраняем состояние для отката
+    // Сохраняем состояние для отката обратно, если после этого хода шах остался
     const backup = {
         pieces: pieces.slice(),
         piecePos: { x: piece.x, y: piece.y },
@@ -217,19 +219,19 @@ function tryMove(piece, from, to) {
 function canCastle(king, from, to) {
     if(king.hasMoved) return false;
     if(from.y !== to.y) return false; // рокировка по горизонтали
-    const dir = to.x - from.x > 0 ? 1 : -1; // вправо или влево
+    const dir = to.x - from.x > 0 ? 1 : -1;
 
     // Ладья на линии рокировки
     let rookX = dir > 0 ? 7 : 0;
     const rook = getPieceAt(rookX, from.y);
     if(!rook || !rook.type.endsWith('rook') || rook.hasMoved) return false;
 
-    // Проверить пустоту клеток между королём и ладьёй
+    // Проверить есть ли другие фигуры между королём и ладьёй
     for(let x = from.x + dir; x !== rookX; x += dir){
         if(getPieceAt(x, from.y)) return false;
     }
 
-    // Проверить, что король не под шахом, и клетки, через которые он пройдет, тоже не под атакой
+    // Проверить, что король не под шахом, и клетки, через которые он пройдет, тоже не блокируются другиими фигурами по их линии
     const playerColor = king.type.split('_')[0];
     if(isKingInCheck(playerColor)) return false;
 
@@ -243,7 +245,7 @@ function canCastle(king, from, to) {
     king.y = from.y;
     if(inCheck) return false;
 
-    // Всё хорошо - рокировка разрешена
+    // рокировка разрешена - все условия выполнены
     return true;
 }
 
@@ -288,80 +290,125 @@ canvas.addEventListener('mousemove', e => {
 });
 
 canvas.addEventListener('mouseup', e => {
-    if(!dragging) return;
+    if (!dragging) return;
     dragging = false;
 
     const rect = canvas.getBoundingClientRect();
     const toX = Math.floor((e.clientX - rect.left) / cellSize);
     const toY = Math.floor((e.clientY - rect.top) / cellSize);
 
-    if(selectedPiece){
-        const from = {x: selectedPiece.x, y: selectedPiece.y};
-        const to = {x: toX, y: toY};
+    console.log(`Mouse up at: (${toX}, ${toY})`);
 
-        // Проверка разрешён ли ход или рокировка
-        if(canMove(selectedPiece, from, to)){
+    if (selectedPiece) {
+        const from = { x: selectedPiece.x, y: selectedPiece.y };
+        const to = { x: toX, y: toY };
+
+        console.log(`Trying to move from: (${from.x}, ${from.y}) to: (${to.x}, ${to.y})`);
+
+        // Проверка разрешена ли рокировка
+        if (canMove(selectedPiece, from, to)) {
             // Рокировка
-            if(selectedPiece.type.endsWith('king') && Math.abs(to.x - from.x) === 2){
+            if (selectedPiece.type.endsWith('king') && Math.abs(to.x - from.x) === 2) {
+                console.log('Performing castling!');
                 doCastle(selectedPiece, from, to);
                 sendMove(from.x, from.y, to.x, to.y);
-            }
-            else{
-                if(tryMove(selectedPiece, from, to)){
+            } else {
+                if (tryMove(selectedPiece, from, to)) {
+                    console.log('Move successful!');
                     sendMove(from.x, from.y, to.x, to.y);
                 } else {
                     alert('Нельзя сделать ход, ваш король под шахом!');
                 }
             }
+        } else {
+            console.warn('Move is not allowed.');
+            alert('Недопустимый ход!');
         }
+    } else {
+        console.warn('No selected piece.');
     }
+
     selectedPiece = null;
     dragPos = null;
     redraw();
 });
+
 
 function redraw() {
     drawBoard();
     drawPieces();
 }
 
-function sendMove(fromX, fromY, toX, toY) {
+const csrftoken = getCookie('csrftoken');  // Получаем CSRF токен
 
+function sendMove(fromX, fromY, toX, toY) {
     const gameIdInput = document.getElementById('gameId');
     const game_id = gameIdInput ? gameIdInput.value : null;
-    if(!game_id) {
-        console.warn('game_id не найден');
-        return;
+
+    if (!game_id) {
+    console.warn('game_id не найден');
+    return;
     }
+    const body = JSON.stringify({
+        game_id: game_id,
+        old_coords: [fromX, fromY],
+        new_coords: [toX, toY]
+    });
+    console.log('Body being sent:', body);
+
     fetch('/move_piece/', {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            game_id: game_id,
-            old_coords: { x: fromX, y: fromY },
-            new_coords: { x: toX, y: toY }
-        })
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: body
     })
-    .then(res => res.json())
-    .then(data => {
-        // Можно обновить состояние доски с сервера, если нужно
-        console.log('Ответ сервера:', data);
-        if(data.status === 'error'){
-            alert('Ошибка с сервером: ' + data.message);
+    .then(response => {
+        console.log('Response status:', response.status); // Логи на статус ответа от сервера
+        if (!response.ok) {
+            throw new Error('HTTP error! Status: ' + response.status);
         }
+        return response.json();
     })
-    .catch(err => console.error('Ошибка отправки хода:', err));
+    .then(data => {
+        console.log('Move successful:', data);
+
+    })
+    .catch(error => {
+        console.error('Ошибка отправки хода:', error);
+    });
 }
+
+
+
+function getCookie(name) {
+       let cookieValue = null;
+       if (document.cookie && document.cookie !== '') {
+           const cookies = document.cookie.split(';');
+           for (let i = 0; i < cookies.length; i++) {
+               const cookie = cookies[i].trim();
+               // Проверяем, начинается ли cookie с имени, которое мы ищем
+               if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                   cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                   break;
+               }
+           }
+       }
+       console.log(`CSRF Token: ${cookieValue}`);
+       return cookieValue;
+   }
+
 
 fetch('/new_game/')
   .then(response => response.json())
   .then(data => {
     if(data.status === 'success') {
       console.log('Новая игра создана, game_id:', data.game_id);
-      // Сохраняйте game_id и используйте для ходов
+
     }
   });
 
-// Инициализация и первый отрисовка
+
 initPieces();
 redraw();
