@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 from .models import ChessGame
-from .chess_logic import process_move, is_valid_move  # Подразумеваем, что функция move_piece корректно реализована
+from .chess_logic import is_valid_move
 import json
 from django.views.decorators.csrf import csrf_exempt
 
@@ -9,68 +9,83 @@ def index(request):
     game_id = 746
     return render(request, 'chess/index.html', {'game_id': game_id})
 
+
 @csrf_exempt
 def move_piece(request):
+    print("ok")
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
+            print('Received data:', data)
+
+            # Проверка формата полученных данных
+            if not isinstance(data, dict):
+                print("Error: Received data is not a dictionary")
+                return JsonResponse({'status': 'error', 'message': 'Invalid input format'}, status=400)
+
+            # Проверка необходимых данных
             game_id = data.get('game_id')
-            if not game_id:
-                return JsonResponse({'status': 'error', 'message': 'No game_id provided'}, status=400)
+            old_coords = data.get('old_coords', [])
+            new_coords = data.get('new_coords', [])
 
-            old_coords = data.get('old_coords', {})
-            new_coords = data.get('new_coords', {})
+            if not game_id or len(old_coords) != 2 or len(new_coords) != 2:
+                print("Error: Missing or invalid fields")
+                return JsonResponse({'status': 'error', 'message': 'Invalid input'}, status=400)
 
-            old_x = old_coords.get('x')
-            old_y = old_coords.get('y')
-            new_x = new_coords.get('x')
-            new_y = new_coords.get('y')
+            # Получаем игру и состояние доски
+            try:
+                chess_game = ChessGame.objects.get(id=game_id)
+            except ChessGame.DoesNotExist:
+                print("Error: Game not found")
 
-            if not all(isinstance(coord, int) for coord in [old_x, old_y, new_x, new_y]):
-                return JsonResponse({'status': 'error', 'message': 'Invalid coordinates'}, status=400)
-
-            chess_game = ChessGame.objects.get(id=game_id)
-            board = chess_game.get_current_board()
-
-            print(f"Current board: {board}")  # Отладочный вывод
-            print(f"Checking figure at old coords: {old_y},{old_x}")
-
-            if (old_x, old_y) == (new_x, new_y):
-                return JsonResponse({'status': 'invalid move', 'message': 'Cannot move to the same position'}, status=400)
-
-            figure = board[old_y][old_x]
-            if not figure:
-                return JsonResponse({'status': 'error', 'message': 'No figure at old coordinates'}, status=400)
-
+                return JsonResponse({'status': 'error', 'message': 'Game not found'}, status=404)
+            print(type(chess_game))
             current_turn = chess_game.turn
-            if current_turn != figure.color:
-                return JsonResponse({'status': 'error', 'message': f"It's {current_turn}'s turn"}, status=400)
+            board = chess_game.get_current_board()
+            print(f": It's {current_turn}'s turn")
+            old_x, old_y = old_coords
+            new_x, new_y = new_coords
+            piece = board[old_x][old_y]
+            print(f"Error: It's not {current_turn}'s turn")
 
-            target_figure = board[new_y][new_x]
-            if target_figure and target_figure.color == figure.color:
-                return JsonResponse({'status': 'error', 'message': 'Cannot move to a square occupied by own piece'}, status=400)
+            if piece is None:
+                print("Error: No piece found at the given location")
+                return JsonResponse({'status': 'error', 'message': 'No piece at provided coordinates'}, status=400)
 
-            if not is_valid_move(figure, (old_x, old_y), (new_x, new_y), board):
-                return JsonResponse({'status': 'invalid move'}, status=400)
+            piece_color = piece.color if piece else None
 
-            success, new_board = process_move(old_coords, new_coords, board)
-            if not success:
-                return JsonResponse({'status': 'invalid move'}, status=400)
+            # Проверка на правильность очередности ходов
+            if piece_color != current_turn:
+                print(f"Error: It's not {current_turn}'s turn")
+                return JsonResponse({'status': 'error', 'message': 'It is not your turn'}, status=403)
 
-            chess_game.update_board(new_board)
-            chess_game.turn = 'black' if chess_game.turn == 'white' else 'white'
+            # Проверка на допустимость хода
+            if not is_valid_move(piece, (old_x, old_y), (new_x, new_y), board):
+                print("Error: Invalid move for this piece")
+                return JsonResponse({'status': 'error', 'message': 'Invalid move for this piece'}, status=400)
+
+            # Обновляем состояние доски
+            board[new_x][new_y] = piece
+            board[old_x][old_y] = None
+
+            # Сохраняем изменения
+            chess_game.update_board(board)
+            chess_game.turn = 'black' if current_turn == 'white' else 'white'
             chess_game.save()
 
-            return JsonResponse({'status': 'success', 'board': new_board})
+            return JsonResponse({'status': 'success', 'message': 'Move made successfully'})
 
-        except ChessGame.DoesNotExist:
-            return JsonResponse({'status': 'error', 'message': 'Game not found'}, status=404)
         except json.JSONDecodeError:
+            print("Error: Invalid JSON format")
             return JsonResponse({'status': 'error', 'message': 'Invalid JSON format'}, status=400)
+
         except Exception as e:
+            print(f"Unexpected error: {e}")
             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
+    print("Error: Invalid request method")
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=400)
+
 
 
 def new_game(request):
