@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'styles.css' %}">
+    <title>Создание аккаунта</title>
+</head>
+<body>
+    <div class="container">
+        <h2 class="text-center">Создайте свою учётную запись</h2>
+
+        <form method="post">
+            {% csrf_token %}
+
+            <div class="form-group">
+                {% if form.username.errors %}
+                    <div class="error">{{ form.username.errors.0 }}</div>  <!-- Выводим ошибку над полем для имени пользователя -->
+                {% endif %}
+                <label for="id_username">Имя пользователя:</label><br>
+                {{ form.username }}  <!-- Используем поле формы -->
+            </div>
+
+            <div class="form-group">
+                {% if form.password.errors %}
+                    <div class="error">{{ form.password.errors.0 }}</div>  <!-- Выводим ошибку над полем для пароля -->
+                {% endif %}
+                <label for="id_password">Пароль:</label><br>
+                {{ form.password }}  <!-- Используем поле формы -->
+            </div>
+
+            <button type="submit" class="button">Зарегистрироваться</button>
+        </form>
+    </div>
+    <div class="home">
+        <a href="{% url 'home' %}">На главную страницу</a>
+    </div>
+</body>
+</html>
