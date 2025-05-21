@@ -1,0 +1,7 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+/chess_chess/migrations/
+/**/__pycache__/
+/.venv/
+/chess_chess/static/images/*
