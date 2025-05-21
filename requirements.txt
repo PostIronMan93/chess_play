@@ -1,0 +1,14 @@
+asgiref==3.8.1
+blinker==1.9.0
+click==8.1.8
+colorama==0.4.6
+debugpy==1.8.14
+-e git+https://github.com/django/django.git@de1117ea8eabe0ee0aa048e5a4e249eab7c4245e#egg=Django
+Flask==3.1.0
+itsdangerous==2.2.0
+Jinja2==3.1.5
+MarkupSafe==3.0.2
+pydevd-pycharm==251.25410.122
+sqlparse==0.5.3
+tzdata==2025.1
+Werkzeug==3.1.3
