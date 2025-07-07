@@ -1,41 +1,40 @@
 from django.db import models
 import json
+
 class Piece:
-    def __init__(self, piece_type, color):
+    def __init__(self, piece_type, color, has_moved=False):
         self.type = piece_type
         self.color = color
+        self.has_moved = has_moved
 
     def to_dict(self):
-        return {'type': self.type, 'color': self.color}
+        return {
+            'type': self.type,
+            'color': self.color,
+            'hasMoved': self.has_moved
+        }
 
 class ChessGame(models.Model):
     board_state = models.TextField()  # Состояние доски в виде JSON
     turn = models.CharField(max_length=5)  # 'white' или 'black'
     move_history = models.TextField(default="[]")  # История ходов в формате JSON
 
-    def get_current_board(self): #получает текущее состояние доски
+    def get_current_board(self):
         board_state_str = self.board_state
         if not board_state_str:
-            return [[None for _ in range(8)] for _ in range(8)]  # Инициализация пустой доски
+            return [[None for _ in range(8)] for _ in range(8)]
 
         board_data = json.loads(board_state_str)
         board = []
         for row in board_data:
             board_row = []
             for piece_data in row:
-                print(piece_data)
                 if piece_data:
-                    if isinstance(piece_data, dict):
-                        color = piece_data.get("color")
-                        type = piece_data.get("type")
-                    elif isinstance(piece_data, str):
-                        color = 'white' if piece_data.isupper() else 'black'
-                        type = piece_data.upper()
-                    else:
-                        color = type = None
-
+                    color = piece_data.get("color")
+                    type = piece_data.get("type")
+                    has_moved = piece_data.get("hasMoved", False)
                     if color and type:
-                        piece = Piece(type, color)
+                        piece = Piece(type, color, has_moved)
                         board_row.append(piece)
                     else:
                         board_row.append(None)
@@ -50,7 +49,7 @@ class ChessGame(models.Model):
             serialized_row = []
             for piece in row:
                 if piece:
-                    serialized_row.append(piece.to_dict())  # Сериализация фигуры в словарь
+                    serialized_row.append(piece.to_dict())
                 else:
                     serialized_row.append(None)
             serialized_board.append(serialized_row)
