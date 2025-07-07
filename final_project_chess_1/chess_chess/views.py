@@ -38,7 +38,7 @@ def user_login(request):
             user = authenticate(request, username=username, password=password)
             if user is not None:
                 login(request, user)
-                return redirect('dashboard')  # Замените на ваше представление с новой игрой
+                return redirect('dashboard')  
             else:
                 return render(request, 'chess/login.html', {'form': form, 'error': 'Неверные логин или пароль'})
     else:
@@ -120,8 +120,6 @@ def move_piece(request):
 
             if getattr(piece, 'has_moved', True) or getattr(rook, 'has_moved', True):
                 return JsonResponse({'status': 'error', 'message': 'King or rook has already moved'}, status=400)
-
-            # TODO: Проверить, что клетки между королём и ладьёй пусты и король не под шахом
 
             # Совершаем рокировку
             board[new_y][new_x] = piece
@@ -224,8 +222,3 @@ def new_game(request):
     board = initial_board_state()
     game = ChessGame.objects.create(board_state=json.dumps(board), turn='white')
     return redirect('index', game_id=game.id)
-
-
-# def continue_game(request):
-#     # Логика по извлечению текущей игры и отображению
-#     return render(request, 'chess/continue_game.html')  # Создайте этот шаблон
