@@ -1,4 +1,14 @@
 #проверка на валидность хода
+moved_figures = set()
+last_double_pawn_move = None
+moved_figures = {
+    'white_king': False,
+    'white_rook_left': False,
+    'white_rook_right': False,
+    'black_king': False,
+    'black_rook_left': False,
+    'black_rook_right': False,
+}
 def is_valid_move(figure, old_coords, new_coords, board):
     print(f"Checking move for {figure} from {old_coords} to {new_coords}")
     # Проверяем, что новые координаты находятся в пределах доски
@@ -16,33 +26,56 @@ def is_valid_move(figure, old_coords, new_coords, board):
     return True
 
 def move_pawn(old_coords, new_coords, board):
+    global last_double_pawn_move
+
     old_x, old_y = old_coords
     new_x, new_y = new_coords
     figure = board[old_y][old_x]
 
     if figure is None:
         return (False, board)
-    # направление движения пешки
-    direction = 1 if figure.islower() else -1
+
+    direction = 1 if figure.islower() else -1  # направление движения пешки
 
     # движение на 1 клетку вперёд
-    if new_x == old_x + direction and new_y == old_y and board[new_x][new_y] is None:
+    if new_x == old_x and new_y == old_y + direction and board[new_y][new_x] is None:
         board[new_y][new_x] = figure
         board[old_y][old_x] = None
+        last_double_pawn_move = None
         return (True, board)
 
-    # движение на 2 клетки вперёд (если до этого не ходил пешкой)
+    # движение на 2 клетки вперёд (если пешка на стартовой позиции)
     if (old_y == 1 and figure.islower() and new_y == old_y + 2 and new_x == old_x and
             board[old_y + 1][old_x] is None and board[new_y][new_x] is None):
         board[new_y][new_x] = figure
         board[old_y][old_x] = None
+        last_double_pawn_move = (new_x, new_y)
         return (True, board)
 
-    # взятие пешкой (берут по диагонали)
-    if new_x == old_x + direction and abs(new_y - old_y) == 1 and board[new_y][new_x] is not None:
+    if (old_y == 6 and figure.isupper() and new_y == old_y - 2 and new_x == old_x and
+            board[old_y - 1][old_x] is None and board[new_y][new_x] is None):
         board[new_y][new_x] = figure
         board[old_y][old_x] = None
+        last_double_pawn_move = (new_x, new_y)
         return (True, board)
+
+    # взятие пешкой по диагонали (обычное)
+    if abs(new_x - old_x) == 1 and new_y == old_y + direction:
+        target = board[new_y][new_x]
+        if target is not None and target.isupper() != figure.isupper():
+            board[new_y][new_x] = figure
+            board[old_y][old_x] = None
+            last_double_pawn_move = None
+            return (True, board)
+
+        # взятие на проходе
+        if last_double_pawn_move == (new_x, old_y):
+            # снимаем пешку, которая сделала двойной ход
+            board[old_y][new_x] = None
+            board[new_y][new_x] = figure
+            board[old_y][old_x] = None
+            last_double_pawn_move = None
+            return (True, board)
 
     return (False, board)
 
@@ -67,6 +100,13 @@ def move_rook(old_coords, new_coords, board):
 
     board[new_y][new_x] = figure
     board[old_y][old_x] = None
+
+    color = 'white' if figure.isupper() else 'black'
+    if old_x == 0:  # левая ладья
+        moved_figures[f'{color}_rook_left'] = True
+    elif old_x == 7:  # правая ладья
+        moved_figures[f'{color}_rook_right'] = True
+
     return (True, board)
 
 def move_knight(old_coords, new_coords, board):
@@ -102,7 +142,7 @@ def move_bishop(old_coords, new_coords, board):
     step_y = direction_y // abs(direction_y)
 
     for i in range(1, abs(direction_x)):
-        if board[old_x + i * step_x][old_y + i * step_y] is not None:
+        if board[old_y + i * step_y][old_x + i * step_x] is not None:
             return (False, board)
 
     target = board[new_y][new_x]
@@ -125,34 +165,85 @@ def move_king(old_coords, new_coords, board):
     new_x, new_y = new_coords
     figure = board[old_y][old_x]
 
-    # движение короля - на одну клетку в любом направлении
-    if abs(new_x - old_x) <= 1 and abs(new_y - old_y) <= 1:
+    dx = new_x - old_x
+    dy = new_y - old_y
+
+    color = 'white' if figure.isupper() else 'black'
+
+    # Рокировка - король двигается на 2 клетки по горизонтали
+    if dy == 0 and abs(dx) == 2:
+        # Проверяем, что король и ладья не ходили
+        if moved_figures[f'{color}_king']:
+            print("Король уже ходил - рокировка невозможна")
+            return (False, board)
+
+        # Определяем сторону рокировки
+        if dx == 2:
+            rook_x = 7
+            rook_key = f'{color}_rook_right'
+            new_rook_x = new_x - 1
+        else:
+            rook_x = 0
+            rook_key = f'{color}_rook_left'
+            new_rook_x = new_x + 1
+
+        rook = board[old_y][rook_x]
+        if rook is None or (rook.upper() != 'R'):
+            print("Ладья отсутствует для рокировки")
+            return (False, board)
+        if moved_figures[rook_key]:
+            print("Ладья уже ходила - рокировка невозможна")
+            return (False, board)
+
+        # Проверяем пустоту клеток между королём и ладьёй
+        step = 1 if dx > 0 else -1
+        for x in range(old_x + step, rook_x, step):
+            if board[old_y][x] is not None:
+                print("Путь между королём и ладьёй не пуст")
+                return (False, board)
+
+        # TODO: Проверить, что король не под шахом и не проходит через атакуемые клетки
+
+        # Выполняем рокировку
+        board[old_y][new_x] = figure
+        board[old_y][old_x] = None
+        board[old_y][new_rook_x] = rook
+        board[old_y][rook_x] = None
+
+        # Отмечаем, что король и ладья ходили
+        moved_figures[f'{color}_king'] = True
+        moved_figures[rook_key] = True
+
+        print(f"Рокировка {color} выполнена")
+        return (True, board)
+
+    # Обычное движение короля - на 1 клетку в любом направлении
+    if abs(dx) <= 1 and abs(dy) <= 1:
         target = board[new_y][new_x]
-        if target is None or target.color != figure.color:  # проверка на занятие своей клетки
+        if target is None or target.isupper() != figure.isupper():
             board[new_y][new_x] = figure
             board[old_y][old_x] = None
+            moved_figures[f'{color}_king'] = True
             return (True, board)
 
     return (False, board)
 
 # функция, которая отвечает за возможность движение фигуры (после проверки валидности, в случае если ход валидный)
 def process_move(old_coords, new_coords, board, current_turn):
-    figure = board[old_coords[0]][old_coords[1]]
-    if figure is None:
-        return (False, board)  # Никакой фигуры на старых координатах
+    global last_double_pawn_move
 
-    # цвет фигуры
+    figure = board[old_coords[1]][old_coords[0]]
+    if figure is None:
+        return (False, board)
+
     figure_color = 'white' if figure.isupper() else 'black'
     if (current_turn == 'white' and figure_color != 'white') or \
-            (current_turn == 'black' and figure_color != 'black'):
-        print(f"It's {current_turn}'s turn, cannot move {figure_color} piece")
-        return False, board  # Неверный ход
+       (current_turn == 'black' and figure_color != 'black'):
+        return (False, board)
 
-    # является ли движение допустимым
     if not is_valid_move(figure, old_coords, new_coords, board):
-        return (False, board)  # Ход недопустим
+        return (False, board)
 
-    # вызов функции перемещения в зависимости от типа фигуры
     move_functions = {
         'p': move_pawn,
         'r': move_rook,
@@ -162,14 +253,17 @@ def process_move(old_coords, new_coords, board, current_turn):
         'k': move_king,
     }
 
-    # получание функции перемещения для текущей фигуры
     move_func = move_functions.get(figure.lower())
     if move_func:
         result, updated_board = move_func(old_coords, new_coords, board)
         if result:
+            # Если ход пешкой и был двойной ход — last_double_pawn_move уже установлен
+            # Иначе сбрасываем
+            if figure.lower() != 'p' or abs(new_coords[1] - old_coords[1]) != 2:
+                last_double_pawn_move = None
             return (True, updated_board)
 
-    return (False, board)  # ход не выполнен, если функция перемещения не найдена
+    return (False, board)
 
 
 def create_initial_board():
@@ -217,5 +311,4 @@ def print_board(board):
 
 
 print_board(board)
-
 
