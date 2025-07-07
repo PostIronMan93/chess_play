@@ -202,7 +202,6 @@ def move_king(old_coords, new_coords, board):
                 print("Путь между королём и ладьёй не пуст")
                 return (False, board)
 
-        # TODO: Проверить, что король не под шахом и не проходит через атакуемые клетки
 
         # Выполняем рокировку
         board[old_y][new_x] = figure
@@ -257,8 +256,7 @@ def process_move(old_coords, new_coords, board, current_turn):
     if move_func:
         result, updated_board = move_func(old_coords, new_coords, board)
         if result:
-            # Если ход пешкой и был двойной ход — last_double_pawn_move уже установлен
-            # Иначе сбрасываем
+            # Если ход пешкой и был двойной ход — last_double_pawn_move уже установлен иначе сбрасываем
             if figure.lower() != 'p' or abs(new_coords[1] - old_coords[1]) != 2:
                 last_double_pawn_move = None
             return (True, updated_board)
