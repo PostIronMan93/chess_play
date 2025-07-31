@@ -3,6 +3,7 @@ from django.contrib.auth import authenticate, login
 from django.http import JsonResponse
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 from .models import ChessGame, Piece
 from .chess_logic import is_valid_move
 import json, logging
@@ -10,6 +11,8 @@ import json, logging
 from .forms import UserRegistrationForm, UserLoginForm
 
 logger = logging.getLogger(__name__)
+
+
 def register(request):
     if request.method == 'POST':
         form = UserRegistrationForm(request.POST)
@@ -22,13 +25,16 @@ def register(request):
         form = UserRegistrationForm()
     return render(request, 'chess/register.html', {'form': form})
 
+
 def is_valid_coordinates(coords):
     return (
-        isinstance(coords, list) and
-        len(coords) == 2 and
-        all(isinstance(coord, int) for coord in coords) and
-        all(0 <= coord < 8 for coord in coords)
+            isinstance(coords, list) and
+            len(coords) == 2 and
+            all(isinstance(coord, int) for coord in coords) and
+            all(0 <= coord < 8 for coord in coords)
     )
+
+
 def user_login(request):
     if request.method == 'POST':
         form = UserLoginForm(request.POST)
@@ -38,15 +44,17 @@ def user_login(request):
             user = authenticate(request, username=username, password=password)
             if user is not None:
                 login(request, user)
-                return redirect('dashboard')  
+                return redirect('dashboard')
             else:
                 return render(request, 'chess/login.html', {'form': form, 'error': 'Неверные логин или пароль'})
     else:
         form = UserLoginForm()
     return render(request, 'chess/login.html', {'form': form})
 
+
 def home(request):
     return render(request, 'chess/home.html')
+
 
 def dashboard(request):
     return render(request, 'chess/dashboard.html')
@@ -55,7 +63,18 @@ def dashboard(request):
 def index(request, game_id):
     return render(request, 'chess/index.html', {'game_id': game_id})
 
-
+@ensure_csrf_cookie
+def get_board_state(request):
+    game_id = request.GET.get('game_id')
+    try:
+        game = ChessGame.objects.get(id=game_id)
+        return JsonResponse({
+            'boardState': json.loads(game.board_state),
+            'currentTurn': game.turn,
+            'lastDoublePawnMove': json.loads(game.last_double_pawn_move) if game.last_double_pawn_move else None
+        })
+    except ChessGame.DoesNotExist:
+        return JsonResponse({'boardState': None, 'currentTurn': 'white', 'lastDoublePawnMove': None})
 @csrf_exempt
 def move_piece(request):
     if request.method != 'POST':
@@ -149,20 +168,38 @@ def move_piece(request):
             return JsonResponse({'status': 'error', 'message': 'Invalid move for this piece'}, status=400)
 
         if piece.type.lower() == 'p':
+            # Получаем текущий последний ход на 2 клетки вперёд
+            last_move_str = chess_game.last_double_pawn_move
+            if last_move_str:
+                last_move = json.loads(last_move_str)
+                # Проверяем, совпадает ли x-координата, и y-координата противника
+                if last_move.get('x') == new_x and last_move.get('y') == old_y:
+                    # Выполняем взятие на проходе — удаляем фигуру противника на поле, где пешка прошла
+                    opponent_y = old_y
+                    opponent_x = new_x
+                    board[opponent_y][opponent_x] = None
+
+
+            # Проверка, достигла ли пешка последней горизонтали
             last_rank = 0 if piece.color == 'white' else 7
             if new_y == last_rank:
                 if promotion not in ['queen', 'rook', 'bishop', 'knight']:
-                    # Если promotion не указан или некорректен, по умолчанию ферзь
+                    # Если выбор фигуры некорректный, по умолчанию ферзь
                     promotion = 'queen'
-                # Заменяем пешку на выбранную фигуру
+                # Заменяем тип фигуры на выбранный
                 piece.type = promotion[0]
 
-                
         board[new_y][new_x] = piece
         board[old_y][old_x] = None
 
         if not getattr(piece, 'has_moved', False):
             piece.has_moved = True
+
+        if piece.type == 'p' and abs(new_y - old_y) == 2:
+            # Пешка сделала двойной ход — сохраняем координаты пешки
+            chess_game.last_double_pawn_move = json.dumps({'x': new_x, 'y': new_y})
+        else:
+            chess_game.last_double_pawn_move = None  # иначе сбрасываем
 
         chess_game.update_board(board)
         chess_game.turn = 'black' if current_turn == 'white' else 'white'
@@ -173,7 +210,9 @@ def move_piece(request):
             'status': 'success',
             'message': 'Move made successfully',
             'boardState': json.loads(chess_game.board_state),
-            'next_turn': chess_game.turn
+            'next_turn': chess_game.turn,
+            'lastDoublePawnMove': json.loads(
+                chess_game.last_double_pawn_move) if chess_game.last_double_pawn_move else None,
         })
 
     except json.JSONDecodeError:
@@ -181,6 +220,8 @@ def move_piece(request):
     except Exception as e:
         logger.error(f"Exception in move_piece: {e}", exc_info=True)
         return JsonResponse({'status': 'error', 'message': 'Internal server error'}, status=500)
+
+
 def initial_board_state():
     pieces_row_black = [
         {"type": "r", "color": "black", "hasMoved": False},
@@ -218,7 +259,33 @@ def initial_board_state():
     ]
     return board
 
+
 def new_game(request):
     board = initial_board_state()
     game = ChessGame.objects.create(board_state=json.dumps(board), turn='white')
+    request.session['current_game_id'] = game.id
     return redirect('index', game_id=game.id)
+
+@csrf_exempt
+def update_game(request):
+    data = json.loads(request.body)
+    game_id = data['game_id']
+    try:
+        game = ChessGame.objects.get(id=game_id)
+        # Обновляем состояние
+        game.board_state = json.dumps(data['board_state'])
+        game.turn = 'black' if game.turn == 'white' else 'white'
+        # Обновляем пешку на проходе
+        game.last_double_pawn_move = json.dumps(data['last_double_pawn_move']) if data['last_double_pawn_move'] else None
+        game.save()
+        return JsonResponse({'status': 'ok'})
+    except ChessGame.DoesNotExist:
+        return JsonResponse({'status': 'error', 'message': 'Game not found'})
+
+@login_required
+def continue_game(request):
+    game_id = request.session.get('current_game_id')
+    if not game_id:
+        # Если игры нет, можно перенаправить на страницу с выбором или на стартовую
+        return redirect('dashboard')  # или любая другая страница
+    return redirect('index', game_id=game_id)
