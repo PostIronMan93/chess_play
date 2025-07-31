@@ -35,21 +35,23 @@ def move_pawn(old_coords, new_coords, board):
     if figure is None:
         return (False, board)
 
-    direction = 1 if figure.islower() else -1  # направление движения пешки
+    # Направление движения пешки
+    direction = 1 if figure.islower() else -1
 
-    # движение на 1 клетку вперёд
+    # Движение вперёд на 1 клетку
     if new_x == old_x and new_y == old_y + direction and board[new_y][new_x] is None:
         board[new_y][new_x] = figure
         board[old_y][old_x] = None
         last_double_pawn_move = None
         return (True, board)
 
-    # движение на 2 клетки вперёд (если пешка на стартовой позиции)
+    # Движение на 2 клетки вперёд (начальная позиция)
     if (old_y == 1 and figure.islower() and new_y == old_y + 2 and new_x == old_x and
             board[old_y + 1][old_x] is None and board[new_y][new_x] is None):
         board[new_y][new_x] = figure
         board[old_y][old_x] = None
         last_double_pawn_move = (new_x, new_y)
+        print(f"Double move recorded at: {last_double_pawn_move}")
         return (True, board)
 
     if (old_y == 6 and figure.isupper() and new_y == old_y - 2 and new_x == old_x and
@@ -57,21 +59,23 @@ def move_pawn(old_coords, new_coords, board):
         board[new_y][new_x] = figure
         board[old_y][old_x] = None
         last_double_pawn_move = (new_x, new_y)
+        print(f"Double move recorded at: {last_double_pawn_move}")
         return (True, board)
 
-    # взятие пешкой по диагонали (обычное)
+    # Взятие по диагонали (обычное)
     if abs(new_x - old_x) == 1 and new_y == old_y + direction:
         target = board[new_y][new_x]
         if target is not None and target.isupper() != figure.isupper():
+            # обычное взятие
             board[new_y][new_x] = figure
             board[old_y][old_x] = None
             last_double_pawn_move = None
             return (True, board)
 
-        # взятие на проходе
-        if last_double_pawn_move == (new_x, old_y):
-            # снимаем пешку, которая сделала двойной ход
-            board[old_y][new_x] = None
+        # Взятие на проходе
+        elif last_double_pawn_move == (new_x, old_y):
+            # снимаем пешку, которая делала двойной ход
+            board[old_y][new_x] = None 
             board[new_y][new_x] = figure
             board[old_y][old_x] = None
             last_double_pawn_move = None
@@ -309,4 +313,3 @@ def print_board(board):
 
 
 print_board(board)
-
