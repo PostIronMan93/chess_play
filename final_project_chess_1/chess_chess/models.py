@@ -15,9 +15,10 @@ class Piece:
         }
 
 class ChessGame(models.Model):
-    board_state = models.TextField()  # Состояние доски в виде JSON
+    board_state = models.TextField()
     turn = models.CharField(max_length=5)  # 'white' или 'black'
-    move_history = models.TextField(default="[]")  # История ходов в формате JSON
+    move_history = models.TextField(default="[]")
+    last_double_pawn_move = models.CharField(max_length=20, null=True, blank=True)
 
     def get_current_board(self):
         board_state_str = self.board_state
