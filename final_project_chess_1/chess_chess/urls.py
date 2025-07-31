@@ -11,6 +11,6 @@ urlpatterns = [
     path('dashboard/', views.dashboard, name='dashboard'),
     path('index/<int:game_id>/', views.index, name='index'),
     path('logout/', LogoutView.as_view(next_page='home'), name='logout'),
-    # path('continue_game/', views.continue_game, name='continue_game'),
+    path('continue_game/', views.continue_game, name='continue_game'),
 ]
 
