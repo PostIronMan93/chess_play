@@ -102,6 +102,16 @@ function isPathClear(start, end) {
     return true;
 }
 
+// Проверка валидности lastDoublePawnMove — сбрасываем, если пешки нет
+function validateLastDoublePawnMove() {
+    if (!lastDoublePawnMove) return;
+    const p = getPieceAt(lastDoublePawnMove.x, lastDoublePawnMove.y);
+    if (!p || !p.type.endsWith('pawn')) {
+        console.log('lastDoublePawnMove сброшен, пешка отсутствует на позиции', lastDoublePawnMove);
+        lastDoublePawnMove = null;
+    }
+}
+
 // Правила ходов для фигур — с учётом шаха
 
 function canMove(piece, from, to, skipCheck=false) {
@@ -117,25 +127,31 @@ function canMove(piece, from, to, skipCheck=false) {
     // Проверка ходов для каждой фигуры
     switch(piece.type){
         case 'white_pawn': {
-    let dir = -1;
-    // движение вперёд на 1 клетку
-    if(dx === 0 && dy === dir && !target) return true;
-    // движение вперёд на 2 клетки из начальной позиции
-    if(dx === 0 && dy === 2*dir && from.y === 6 && !target && !getPieceAt(from.x, from.y + dir)) return true;
-    // взятие по диагонали
-    if(Math.abs(dx) === 1 && dy === dir) {
-        if(target && target.type.startsWith('black')) return true;
+            let dir = -1;
+            // движение вперёд на 1 клетку
+            if(dx === 0 && dy === dir && !target) return true;
+            // движение вперёд на 2 клетки из начальной позиции
+            if(dx === 0 && dy === 2*dir && from.y === 6 && !target && !getPieceAt(from.x, from.y + dir)) return true;
+            // взятие по диагонали
+            if(Math.abs(dx) === 1 && dy === dir) {
+                if(target && target.type.startsWith('black')) return true;
 
-        // Взятие на проходе
-        if(lastDoublePawnMove &&
-           lastDoublePawnMove.x === to.x &&
-           lastDoublePawnMove.y === from.y &&
-           getPieceAt(to.x, from.y)?.type === 'black_pawn') {
-            return true;
+                // Взятие на проходе
+                if(lastDoublePawnMove) {
+                    const epPawn = getPieceAt(to.x, from.y);
+                    if (
+                        epPawn &&
+                        epPawn.type === 'black_pawn' &&
+                        lastDoublePawnMove.x === to.x &&
+                        lastDoublePawnMove.y === from.y &&
+                        !target
+                    ) {
+                        return true;
+                    }
+                }
+            }
+            return false;
         }
-    }
-    return false;
-}
         case 'black_pawn': {
             let dir = 1;
             if(dx === 0 && dy === dir && !target) return true;
@@ -144,11 +160,17 @@ function canMove(piece, from, to, skipCheck=false) {
                 if(target && target.type.startsWith('white')) return true;
 
                 // Взятие на проходе
-                if(lastDoublePawnMove &&
-                   lastDoublePawnMove.x === to.x &&
-                   lastDoublePawnMove.y === from.y &&
-                   getPieceAt(to.x, from.y)?.type === 'white_pawn') {
-                    return true;
+                if(lastDoublePawnMove) {
+                    const epPawn = getPieceAt(to.x, from.y);
+                    if (
+                        epPawn &&
+                        epPawn.type === 'white_pawn' &&
+                        lastDoublePawnMove.x === to.x &&
+                        lastDoublePawnMove.y === from.y &&
+                        !target
+                    ) {
+                        return true;
+                    }
                 }
             }
             return false;
@@ -211,59 +233,93 @@ function deepClonePieces(pieces) {
 function tryMove(piece, from, to) {
     const target = getPieceAt(to.x, to.y);
 
-    if(target && target.type.split('_')[0] === piece.type.split('_')[0]){
+    // Запрет хода на свою фигуру
+    if (target && target.type.split('_')[0] === piece.type.split('_')[0]) {
         console.warn('Нельзя ходить на клетку, занятую своей фигурой');
         return false;
     }
 
-  // Глубокое копирование фигур для отката
+    // Сохраняем копию для отката
     const piecesBackup = deepClonePieces(pieces);
+
+    // Флаг, удалили ли пешку на проходе
+    let epPawn = null;
+
+    // Проверка взятия на проходе
+    if (
+        piece.type.endsWith('pawn') &&
+        Math.abs(to.x - from.x) === 1 &&
+        to.y - from.y === (piece.type.startsWith('white') ? -1 : 1) &&
+        !target
+    ) {
+        // Проверяем lastDoublePawnMove — координаты пешки, которую можно взять на проходе
+        if (
+            lastDoublePawnMove &&
+            lastDoublePawnMove.x === to.x &&
+            lastDoublePawnMove.y === from.y
+        ) {
+            epPawn = getPieceAt(to.x, from.y);
+            if (epPawn && epPawn.type === (piece.type.startsWith('white') ? 'black_pawn' : 'white_pawn')) {
+                // Удаляем пешку на проходе
+                pieces = pieces.filter(p => p !== epPawn);
+            } else {
+                // Пешка для взятия отсутствует — ход недопустим
+                return false;
+            }
+        } else {
+            // Недопустимый ход
+            return false;
+        }
+    }
 
     // Выполняем ход
     piece.x = to.x;
     piece.y = to.y;
     piece.hasMoved = true;
 
-    // Если ход рокировка — двигаем ладью
-    if(piece.type.endsWith('king') && Math.abs(to.x - from.x) === 2) {
+    // Рокировка
+    if (piece.type.endsWith('king') && Math.abs(to.x - from.x) === 2) {
         const dir = to.x - from.x > 0 ? 1 : -1;
         const rookX = dir > 0 ? 7 : 0;
         const rook = getPieceAt(rookX, from.y);
-        if(rook) {
+        if (rook) {
             rook.x = from.x + dir;
             rook.hasMoved = true;
         }
     }
 
-    if(target){
-        pieces = pieces.filter(p => !(p.x === to.x && p.y === to.y && p !== piece));
+    // Если ход не взятие на проходе и есть target — удаляем фигуру
+    if (target && target !== epPawn) {
+        pieces = pieces.filter(p => p !== target);
     }
 
-    // Проверка шаха после хода
-    if(isKingInCheck(piece.type.split('_')[0])){
-        // Откат хода
+    // Проверка шаха
+    if (isKingInCheck(piece.type.split('_')[0])) {
+        // Откат
         pieces = piecesBackup;
-        // Восстанавливаем свойства фигуры из бэкапа
-        for(let i = 0; i < pieces.length; i++){
-            if(pieces[i].type === piece.type && pieces[i].x === to.x && pieces[i].y === to.y){
-                piece.x = piecesBackup[i].x;
-                piece.y = piecesBackup[i].y;
-                piece.hasMoved = piecesBackup[i].hasMoved;
-                break;
-            }
-        }
         return false;
     }
-        // Проверка превращения пешки
-    if(piece.type.endsWith('pawn')) {
-        if((piece.type.startsWith('white') && piece.y === 0) ||
-           (piece.type.startsWith('black') && piece.y === 7)) {
+
+    // Превращение пешки
+    if (piece.type.endsWith('pawn')) {
+        const lastRank = piece.type.startsWith('white') ? 0 : 7;
+        if (piece.y === lastRank) {
             promotePawnWithChoice(piece);
         }
     }
 
+    // Обновляем lastDoublePawnMove для взятия на проходе
+    if (piece.type.endsWith('pawn') && Math.abs(to.y - from.y) === 2) {
+        lastDoublePawnMove = { x: to.x, y: to.y };
+        console.log('lastDoublePawnMove установлен в tryMove:', lastDoublePawnMove);
+    } else {
+        lastDoublePawnMove = null;
+        console.log('lastDoublePawnMove сброшен в tryMove');
+    }
+
     return true;
 }
+
 
 function promotePawnWithChoice(pawn) {
     const color = pawn.type.startsWith('white') ? 'white' : 'black';
@@ -364,6 +420,53 @@ function isCheckmate(currentPlayer) {
     return true;
 }
 
+function isStalemate(currentPlayer) {
+    if (isKingInCheck(currentPlayer)) {
+        return false; // Если король под шахом — это не пат
+    }
+
+    const allPieces = pieces.filter(p => p.type.startsWith(currentPlayer));
+
+    for (const piece of allPieces) {
+        for (let x = 0; x < boardSize; x++) {
+            for (let y = 0; y < boardSize; y++) {
+                const from = { x: piece.x, y: piece.y };
+                const to = { x: x, y: y };
+
+                if (canMove(piece, from, to)) {
+                    // Выполняем временный ход
+                    const originalPosition = { x: piece.x, y: piece.y };
+                    const targetPiece = getPieceAt(to.x, to.y);
+
+                    piece.x = to.x;
+                    piece.y = to.y;
+
+                    // Убираем взятую фигуру временно, если есть
+                    if (targetPiece) {
+                        pieces = pieces.filter(p => p !== targetPiece);
+                    }
+
+                    const stillInCheck = isKingInCheck(currentPlayer);
+
+                    // Откатываем ход
+                    piece.x = originalPosition.x;
+                    piece.y = originalPosition.y;
+
+                    if (targetPiece) {
+                        pieces.push(targetPiece);
+                    }
+
+                    if (!stillInCheck) {
+                        return false; // Есть хотя бы один легальный ход
+                    }
+                }
+            }
+        }
+    }
+
+    // Ни одного легального хода нет и король не под шахом — пат
+    return true;
+}
 
 // Проверка рокировки
 function canCastle(king, from, to) {
@@ -493,7 +596,10 @@ canvas.addEventListener('mouseup', e => {
         return;
     }
 
-    // Проверяем рокировку (ваш существующий код)
+    console.log('Попытка хода с', from, 'на', to);
+    console.log('lastDoublePawnMove перед ходом:', lastDoublePawnMove);
+
+    // Рокировка
     if (selectedPiece.type.endsWith('king') && !selectedPiece.hasMoved && dy === 0 && (dx === 2 || dx === -2)) {
         if (canCastle(selectedPiece, from, to)) {
             sendMove(from.x, from.y, to.x, to.y, true);
@@ -510,33 +616,11 @@ canvas.addEventListener('mouseup', e => {
         }
     }
 
-    // Взятие на проходе (ваш существующий код)
-    if (selectedPiece.type.endsWith('pawn') &&
-        Math.abs(dx) === 1 &&
-        dy === (selectedPiece.type.startsWith('white') ? -1 : 1) &&
-        !targetPiece) {
-        const epPawn = getPieceAt(to.x, from.y);
-        if (epPawn &&
-            epPawn.type === (selectedPiece.type.startsWith('white') ? 'black_pawn' : 'white_pawn') &&
-            lastDoublePawnMove &&
-            lastDoublePawnMove.x === to.x && lastDoublePawnMove.y === from.y) {
-            pieces = pieces.filter(p => p !== epPawn);
-        } else {
-            alert('Недопустимый ход!');
-            redraw();
-            selectedPiece = null;
-            return;
-        }
-    }
+    // Взятие на проходе — не удаляем пешку здесь, это делает tryMove
 
-    let promotion = null;
-    const lastRank = selectedPiece.type.startsWith('white') ? 0 : 7;
-
-    if (selectedPiece.type.endsWith('pawn') && to.y === lastRank) {
-        promotion = promotePawnWithChoice(selectedPiece);  // Выбор превращения и обновление типа локально
-    }
-
+    // Попытка сделать ход
     const moveAllowed = tryMove(selectedPiece, from, to);
+
     if (!moveAllowed) {
         alert('Этот ход оставит Вас под шахом, либо невозможен!');
         redraw();
@@ -544,29 +628,26 @@ canvas.addEventListener('mouseup', e => {
         return;
     }
 
-    selectedPiece.hasMoved = true;
+    // Обновление lastDoublePawnMove уже сделано в tryMove
 
-    if (selectedPiece.type.endsWith('pawn') && Math.abs(dy) === 2) {
-        lastDoublePawnMove = { x: to.x, y: to.y };
-    } else {
-        lastDoublePawnMove = null;
-    }
-
-    // Передаём promotion в sendMove (если есть)
-    sendMove(from.x, from.y, to.x, to.y, false, promotion);
+    sendMove(from.x, from.y, to.x, to.y, false);
 
     switchPlayer();
 
     if (isKingInCheck(currentPlayer)) {
         alert('Ваш король под шахом!');
     }
+
     if (isCheckmate(currentPlayer)) {
         alert('Мат! Игра окончена.');
+    } else if (isStalemate(currentPlayer)) {
+        alert('Пат! Игра окончена.');
     }
 
     selectedPiece = null;
     redraw();
 });
+
 
 
 function redraw() {
@@ -629,7 +710,7 @@ function sendMove(fromX, fromY, toX, toY, castle = false, promotion = null) {
                     piece.y = toY;
                     piece.hasMoved = true;
 
-                    // Обновляем тип фигуры, если была превращение
+                    // Обновляем тип фигуры, если было превращение
                     if (promotion) {
                         const color = piece.type.split('_')[0];
                         piece.type = color + '_' + promotion;
@@ -638,6 +719,11 @@ function sendMove(fromX, fromY, toX, toY, castle = false, promotion = null) {
             }
 
             currentPlayer = data.next_turn;
+
+            // Обновляем lastDoublePawnMove из ответа сервера
+            lastDoublePawnMove = data.lastDoublePawnMove || null;
+            validateLastDoublePawnMove();
+
             redraw();
 
             console.log('Ход выполнен успешно');
@@ -675,6 +761,7 @@ function updateBoard(boardState) {
             }
         }
     }
+    validateLastDoublePawnMove();
     drawBoard();
     drawPieces();
 }
@@ -698,15 +785,87 @@ function getCookie(name) {
    }
 
 
-fetch('/new_game/')
-  .then(response => response.json())
-  .then(data => {
-    if(data.status === 'success') {
-      console.log('Новая игра создана, game_id:', data.game_id);
+document.addEventListener('DOMContentLoaded', () => {
+    const gameIdInput = document.getElementById('gameId');
+    let gameId = gameIdInput.value;
 
+    if (!gameId) {
+        document.getElementById('newGameBtn').addEventListener('click', () => {
+            fetch('/new_game/', {
+                method: 'POST'
+            })
+            .then(response => {
+                if (response.redirected) {
+                    window.location.href = response.url;
+                } else {
+                    return response.json();
+                }
+            })
+            .then(data => {
+                if (data && data.game_id) {
+                    gameId = data.game_id;
+                    gameIdInput.value = gameId;
+                    loadBoardFromServer(gameId);
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка при создании новой игры:', error);
+            });
+        });
+    } else {
+        loadBoardFromServer(gameId);
     }
-  });
+});
 
+// Функция загрузки состояния доски
+function loadBoardFromServer(gameId) {
+    console.log('loadBoardFromServer с gameId:', gameId);
+    fetch(`/get_board_state/?game_id=${gameId}`)
+        .then(response => {
+            if(!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        })
+        .then(data => {
+            console.log('Ответ сервера:', data);
+            if(data && data.pieces) {
+                pieces = data.pieces.map(p => ({
+                    type: p.type,
+                    x: p.x,
+                    y: p.y,
+                    hasMoved: p.hasMoved || false
+                }));
+            } else if(data && data.boardState) {
+                pieces = [];
+                const typeMap = {k:'king',q:'queen',r:'rook',b:'bishop',n:'knight',p:'pawn'};
+                for(let y=0; y<8; y++) {
+                    for(let x=0; x<8; x++) {
+                        const cell = data.boardState[y][x];
+                        if(cell !== null) {
+                            pieces.push({
+                                type: cell.color + '_' + typeMap[cell.type.toLowerCase()],
+                                x, y,
+                                hasMoved: cell.hasMoved || false
+                            });
+                        }
+                    }
+                }
+            } else {
+                initPieces();
+            }
 
-initPieces();
-redraw();
+            // Обновляем текущего игрока
+            if (data && data.currentTurn) {
+                currentPlayer = data.currentTurn; // 'white' или 'black'
+            } else {
+                currentPlayer = 'white'; // по умолчанию
+            }
+
+            redraw();
+        })
+        .catch(err => {
+            console.error('Ошибка загрузки состояния доски:', err);
+            initPieces();
+            currentPlayer = 'white';
+            redraw();
+        });
+}
